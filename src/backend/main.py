@@ -85,13 +85,13 @@ class QueryRequest(BaseModel):
     question: str
 
 # --- Helper function to wrap OpenAI calls for Datadog MCP ---
-@ddtrace.llmobs.llm(model_name="gpt-4o-mini", name="clinical_summary")
+@ddtrace.llmobs.llm(model_name="gpt-4o", name="clinical_summary")
 def create_traced_completion(messages):
     """Wraps the OpenAI call to send context to Datadog."""
     metrics["total_openai_calls"] += 1
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages
         )
         return response
@@ -103,13 +103,13 @@ def create_traced_completion(messages):
             span.set_tag("error.message", str(e))
         raise
 
-@ddtrace.llmobs.llm(model_name="gpt-4o-mini", name="alert_ranking")
+@ddtrace.llmobs.llm(model_name="gpt-4o", name="alert_ranking")
 def create_traced_json_completion(messages):
     """Wraps JSON-formatted OpenAI calls for Datadog."""
     metrics["total_openai_calls"] += 1
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=messages,
             response_format={"type": "json_object"}
         )
