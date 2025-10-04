@@ -2,25 +2,15 @@ import React, { useState } from 'react';
 import { Search, Mic, Activity, AlertCircle, TrendingUp, Users, Clock, Sparkles } from 'lucide-react';
 import PatientDetail from './PatientDetail'; // ADD THIS LINE AT TOP
 import Analytics from './Analytics';
+import { useEffect } from 'react';
 
 const CareRadar = () => {
+  
   const [activeMode, setActiveMode] = useState('query');
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
     const [selectedPatient, setSelectedPatient] = useState(null); // ADD THIS LINE
-
-  // Mock data
-  const mockQueryResult = {
-    sql: "SELECT patient_id, age, last_a1c_date FROM patients WHERE 'diabetes' IN conditions AND age > 60 AND last_a1c_date < now() - INTERVAL 6 MONTH",
-    results: [
-      { id: 'P2847', name: 'Patient 2847', age: 67, lastTest: '2024-12-15', overdue: '9 months' },
-      { id: 'P1923', name: 'Patient 1923', age: 72, lastTest: '2024-11-20', overdue: '10 months' },
-      { id: 'P4521', name: 'Patient 4521', age: 64, lastTest: '2025-01-10', overdue: '8 months' },
-    ],
-    narrative: "12 patients match your criteria. 8 are overdue by more than 9 months, representing a significant care gap that requires immediate attention."
-  };
-
-  const mockAlerts = [
+    const mockAlerts = [
     {
       id: 1,
       severity: 'high',
@@ -52,11 +42,62 @@ const CareRadar = () => {
       timestamp: '1 hour ago'
     }
   ];
+    const [alerts, setAlerts] = useState(mockAlerts);
+    
 
-  const handleQuery = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 1500);
+useEffect(() => {
+  if (activeMode === 'radar') {
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }
+}, [activeMode]);
+
+const fetchAlerts = async () => {
+  try {
+    const response = await fetch('http://localhost:8000/api/alerts');
+    const data = await response.json();
+    setAlerts(data.alerts);
+  } catch (error) {
+    console.error('Failed to fetch alerts:', error);
+  }
+};
+
+  // Mock data
+  const mockQueryResult = {
+    sql: "SELECT patient_id, age, last_a1c_date FROM patients WHERE 'diabetes' IN conditions AND age > 60 AND last_a1c_date < now() - INTERVAL 6 MONTH",
+    results: [
+      { id: 'P2847', name: 'Patient 2847', age: 67, lastTest: '2024-12-15', overdue: '9 months' },
+      { id: 'P1923', name: 'Patient 1923', age: 72, lastTest: '2024-11-20', overdue: '10 months' },
+      { id: 'P4521', name: 'Patient 4521', age: 64, lastTest: '2025-01-10', overdue: '8 months' },
+    ],
+    narrative: "12 patients match your criteria. 8 are overdue by more than 9 months, representing a significant care gap that requires immediate attention."
   };
+
+
+  // Replace handleQuery function
+const handleQuery = async () => {
+  setIsLoading(true);
+  
+  try {
+    const response = await fetch('http://localhost:8000/api/query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ question: query })
+    });
+    
+    const data = await response.json();
+    setQueryResult(data);  // Add this state: const [queryResult, setQueryResult] = useState(null);
+    
+  } catch (error) {
+    console.error('Query failed:', error);
+    alert('Failed to query. Make sure backend is running!');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   if (selectedPatient) {
     return (
