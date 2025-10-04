@@ -1,18 +1,29 @@
 import csv
 from clickhouse_driver import Client
+import ast # Used to safely evaluate the string representation of a list
+from datetime import datetime # Import the datetime object
 
 # --- Database Configuration ---
 CLICKHOUSE_HOST = 'localhost'
 CLICKHOUSE_PORT = 9000
-DATABASE_NAME = 'default'
+DATABASE_NAME = 'hackathon'
 TABLE_NAME = 'patients'
 DATA_FILE = 'synthetic_patients.csv'
+CLICKHOUSE_USER = 'hackathon'
+CLICKHOUSE_PASSWORD = 'hackathon'
 
 
 def get_clickhouse_client():
     """Establishes connection to the ClickHouse server."""
     try:
-        client = Client(host=CLICKHOUSE_HOST, port=CLICKHOUSE_PORT)
+        client = Client(
+            host=CLICKHOUSE_HOST,
+            port=CLICKHOUSE_PORT,
+            user=CLICKHOUSE_USER,
+            password=CLICKHOUSE_PASSWORD,
+            database=DATABASE_NAME
+        )
+        client.execute('SELECT 1')
         print("Successfully connected to ClickHouse.")
         return client
     except Exception as e:
@@ -41,30 +52,34 @@ def create_patients_table(client):
     except Exception as e:
         print(f"Error creating table: {e}")
 
-
 def load_data_from_csv(client):
     """Loads data from the generated CSV into the ClickHouse table."""
     try:
         with open(DATA_FILE, 'r') as f:
-            # Skip header
-            next(f)
-            # Use generator to avoid loading all data into memory
             reader = csv.reader(f)
-            data_generator = (row for row in reader)
+            next(reader)  # Skip header row
 
-            # Clickhouse-driver can insert directly from an iterable
-            # Note: The data types must match the table schema.
-            # The script `generate_data.py` prepares the data in the correct format.
-            # The driver correctly handles converting string representations of numbers/dates.
+            processed_rows = []
+            for row in reader:
+                # FINAL FIX IS HERE: Convert date and datetime strings to objects
+                processed_row = [
+                    row[0], # patient_id (String)
+                    int(row[1]), # age (Int)
+                    ast.literal_eval(row[2]), # conditions (List)
+                    datetime.strptime(row[3], '%Y-%m-%d').date(), # last_a1c_date (Date object)
+                    datetime.strptime(row[4], '%Y-%m-%d %H:%M:%S'), # encounter_date (DateTime object)
+                    row[5], # chief_complaint (String)
+                    row[6]  # encounter_type (String)
+                ]
+                processed_rows.append(processed_row)
+
             client.execute(
                 f'INSERT INTO {DATABASE_NAME}.{TABLE_NAME} VALUES',
-                data_generator,
-                types_check=True
+                processed_rows
             )
         print(f"Data from '{DATA_FILE}' loaded successfully into '{TABLE_NAME}'.")
     except Exception as e:
         print(f"Error loading data from CSV: {e}")
-
 
 def main():
     """Main function to set up the database and load data."""
@@ -72,7 +87,6 @@ def main():
     if client:
         create_patients_table(client)
         load_data_from_csv(client)
-        # Verify count
         count = client.execute(f'SELECT count() FROM {DATABASE_NAME}.{TABLE_NAME}')[0][0]
         print(f"Verification: Found {count} records in the '{TABLE_NAME}' table.")
         client.disconnect()
