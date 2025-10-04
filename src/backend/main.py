@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
@@ -6,12 +6,55 @@ from clickhouse_driver import Client
 import os
 from dotenv import load_dotenv
 import json
+import time
+import logging
 
+# Import and configure ddtrace for Datadog
+import ddtrace
+from ddtrace.llmobs import LLMObs
+
+# --- Configuration & Initialization ---
+
+# Load environment variables from .env file
 load_dotenv()
 
+# Set up basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Enable LLM Observability with Datadog
+LLMObs.enable()
+
+# Initialize FastAPI app
 app = FastAPI()
 
-# CORS
+# --- In-Memory Metrics Store ---
+# For a hackathon, in-memory is fine. In production, you'd use Redis or another tool.
+metrics = {
+    "total_requests": 0,
+    "total_errors": 0,
+    "total_openai_calls": 0
+}
+
+# --- Middleware for Logging and Metrics ---
+@app.middleware("http")
+async def log_requests_and_metrics(request: Request, call_next):
+    metrics["total_requests"] += 1
+    start_time = time.time()
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        logging.info(f"Request: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.4f}s")
+        return response
+    except Exception as e:
+        metrics["total_errors"] += 1
+        process_time = time.time() - start_time
+        logging.error(f"Request failed: {request.method} {request.url.path} - Error: {str(e)} - Time: {process_time:.4f}s")
+        # Re-raise the exception to be handled by FastAPI's default error handling
+        raise e
+
+# --- CORS Configuration ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
@@ -40,6 +83,51 @@ except Exception as e:
 
 class QueryRequest(BaseModel):
     question: str
+
+# --- Helper function to wrap OpenAI calls for Datadog MCP ---
+@ddtrace.llmobs.llm(model_name="gpt-4o-mini", name="clinical_summary")
+def create_traced_completion(messages):
+    """Wraps the OpenAI call to send context to Datadog."""
+    metrics["total_openai_calls"] += 1
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
+        )
+        return response
+    except Exception as e:
+        logging.error(f"OpenAI API call failed: {str(e)}")
+        span = ddtrace.tracer.current_span()
+        if span:
+            span.set_tag("error", True)
+            span.set_tag("error.message", str(e))
+        raise
+
+@ddtrace.llmobs.llm(model_name="gpt-4o-mini", name="alert_ranking")
+def create_traced_json_completion(messages):
+    """Wraps JSON-formatted OpenAI calls for Datadog."""
+    metrics["total_openai_calls"] += 1
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            response_format={"type": "json_object"}
+        )
+        return response
+    except Exception as e:
+        logging.error(f"OpenAI JSON API call failed: {str(e)}")
+        span = ddtrace.tracer.current_span()
+        if span:
+            span.set_tag("error", True)
+            span.set_tag("error.message", str(e))
+        raise
+
+# ========== API ENDPOINTS ==========
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """Exposes internal application metrics."""
+    return metrics
 
 # ========== QUERY MODE ENDPOINT ==========
 @app.post("/api/query")
@@ -138,7 +226,7 @@ async def query_patients(request: QueryRequest):
         }
         
     except Exception as e:
-        print(f"Error in query endpoint: {str(e)}")
+        logging.error(f"Error in query endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ========== RADAR MODE ENDPOINT ==========
@@ -326,8 +414,8 @@ async def get_patient_detail(patient_id: str):
         return full_patient
         
     except Exception as e:
-        print(f"Error in patient detail endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+       logging.error(f"Error in patient detail endpoint: {str(e)}")
+       raise HTTPException(status_code=500, detail=str(e))
 
 # ========== ANALYTICS ENDPOINT ==========
 @app.get("/api/analytics")
@@ -390,4 +478,5 @@ async def get_analytics():
 
 if __name__ == "__main__":
     import uvicorn
+    # Remember to run with: ddtrace-run python main.py
     uvicorn.run(app, host="0.0.0.0", port=8000)
