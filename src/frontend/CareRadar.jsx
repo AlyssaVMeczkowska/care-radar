@@ -9,6 +9,11 @@ const CareRadar = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [metrics, setMetrics] = useState({
+    activeAlerts: 0,
+    patientsMonitored: 0,
+    avgResponseTime: 0
+  });
   const [queryResult, setQueryResult] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -45,15 +50,27 @@ const CareRadar = () => {
   }, [activeMode, preferences.autoRefresh]);
 
   const fetchAlerts = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/alerts');
-      const data = await response.json();
-      setAlerts(data.alerts);
-      addActivity('alert', `Radar scan completed: ${data.alerts.length} alerts found`);
-    } catch (error) {
-      console.error('Failed to fetch alerts:', error);
+  try {
+    const response = await fetch('http://localhost:8000/api/alerts');
+    const data = await response.json();
+    
+    console.log('Raw alerts data:', data); // Debug log
+    
+    // Safety check - ensure alerts is an array
+    const alertsArray = Array.isArray(data.alerts) ? data.alerts : [];
+    setAlerts(alertsArray);
+    
+    // Update metrics from API response
+    if (data.metrics) {
+      setMetrics(data.metrics);
     }
-  };
+    
+    addActivity('alert', `Radar scan completed: ${alertsArray.length} alerts found`);
+  } catch (error) {
+    console.error('Failed to fetch alerts:', error);
+    setAlerts([]); // Set empty array on error
+  }
+};
 
   const handleQuery = async () => {
     if (!query.trim()) {
@@ -549,21 +566,21 @@ const CareRadar = () => {
                 <TrendingUp className="w-5 h-5 text-purple-400" />
                 <h4 className="text-sm font-medium text-purple-600">Active Alerts</h4>
               </div>
-              <p className="text-3xl font-bold text-purple-900">{alerts.length}</p>
+              <p className="text-3xl font-bold text-purple-900">{metrics.activeAlerts || alerts.length}</p>
             </div>
             <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-purple-100/50">
               <div className="flex items-center gap-3 mb-2">
                 <Users className="w-5 h-5 text-purple-400" />
                 <h4 className="text-sm font-medium text-purple-600">Patients Monitored</h4>
               </div>
-              <p className="text-3xl font-bold text-purple-900">1,847</p>
+              <p className="text-3xl font-bold text-purple-900">{metrics.patientsMonitored.toLocaleString() || '0'}</p>
             </div>
             <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-purple-100/50">
               <div className="flex items-center gap-3 mb-2">
                 <Activity className="w-5 h-5 text-purple-400" />
                 <h4 className="text-sm font-medium text-purple-600">Avg Response Time</h4>
               </div>
-              <p className="text-3xl font-bold text-purple-900">450ms</p>
+              <p className="text-3xl font-bold text-purple-900">{metrics.avgResponseTime || 450}ms</p>
             </div>
           </div>
         </div>

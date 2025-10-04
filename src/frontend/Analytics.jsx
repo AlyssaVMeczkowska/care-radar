@@ -1,84 +1,80 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Users, Activity, AlertCircle, Calendar, Download, BarChart3 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
 const Analytics = () => {
   const [dateRange, setDateRange] = useState('30d');
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data for patient volume over time
-  const volumeData = [
-    { date: 'Week 1', encounters: 145, admissions: 23 },
-    { date: 'Week 2', encounters: 168, admissions: 28 },
-    { date: 'Week 3', encounters: 192, admissions: 31 },
-    { date: 'Week 4', encounters: 178, admissions: 26 },
-    { date: 'Week 5', encounters: 210, admissions: 35 },
-    { date: 'Week 6', encounters: 225, admissions: 38 },
-    { date: 'Week 7', encounters: 198, admissions: 29 },
-    { date: 'Week 8', encounters: 234, admissions: 42 }
-  ];
+  useEffect(() => {
+    fetchAnalytics();
+  }, [dateRange]);
 
-  // Mock data for conditions
-  const conditionsData = [
-    { condition: 'Diabetes', count: 342, change: +12 },
-    { condition: 'Hypertension', count: 428, change: +8 },
-    { condition: 'COPD', count: 186, change: +24 },
-    { condition: 'Heart Disease', count: 251, change: -5 },
-    { condition: 'Asthma', count: 167, change: +15 }
-  ];
+  const fetchAnalytics = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/analytics');
+      const data = await response.json();
+      console.log('Analytics data received:', data);
+      console.log('volumeData:', data.volumeData);
+      console.log('conditionsData:', data.conditionsData);
+      setAnalyticsData(data);
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Mock data for alert severity
-  const alertSeverityData = [
-    { name: 'High', value: 24, color: '#f87171' },
-    { name: 'Medium', value: 45, color: '#fbbf24' },
-    { name: 'Low', value: 31, color: '#34d399' }
-  ];
+  const COLORS = ['#a78bfa', '#ec4899', '#f472b6', '#c084fc', '#e879f9'];
+  const PIE_COLORS = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa'];
 
-  // Mock data for department metrics
-  const departmentData = [
-    { dept: 'Cardiology', patients: 234, avgWait: 18 },
-    { dept: 'Primary Care', patients: 567, avgWait: 12 },
-    { dept: 'Emergency', patients: 189, avgWait: 45 },
-    { dept: 'Endocrinology', patients: 178, avgWait: 22 },
-    { dept: 'Pulmonary', patients: 145, avgWait: 15 }
-  ];
+  if (isLoading || !analyticsData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-400 rounded-full animate-spin"></div>
+          <p className="text-purple-400">Loading analytics...</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Mock summary stats
   const stats = [
     {
       title: 'Total Patients',
-      value: '1,847',
+      value: analyticsData.totalPatients.toLocaleString(),
       change: '+12.5%',
       trend: 'up',
       icon: Users,
       color: 'from-purple-400 to-pink-400'
     },
     {
-      title: 'Active Alerts',
-      value: '24',
+      title: 'Total Encounters',
+      value: analyticsData.volumeData.reduce((sum, week) => sum + week.encounters, 0).toLocaleString(),
       change: '+8.3%',
       trend: 'up',
-      icon: AlertCircle,
+      icon: Activity,
       color: 'from-red-400 to-pink-400'
     },
     {
-      title: 'Avg Response Time',
-      value: '450ms',
-      change: '-15.2%',
-      trend: 'down',
-      icon: Activity,
+      title: 'Conditions Tracked',
+      value: analyticsData.conditionsData.length.toString(),
+      change: '+5.2%',
+      trend: 'up',
+      icon: AlertCircle,
       color: 'from-green-400 to-emerald-400'
     },
     {
-      title: 'Care Gaps Closed',
-      value: '127',
-      change: '+23.4%',
+      title: 'Encounter Types',
+      value: analyticsData.encounterTypesData.length.toString(),
+      change: '+2.1%',
       trend: 'up',
       icon: TrendingUp,
       color: 'from-blue-400 to-cyan-400'
     }
   ];
-
-  const COLORS = ['#a78bfa', '#ec4899', '#f472b6', '#c084fc', '#e879f9'];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pb-12">
@@ -105,9 +101,12 @@ const Analytics = () => {
                 <option value="90d">Last 90 days</option>
                 <option value="1y">Last year</option>
               </select>
-              <button className="px-4 py-2 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl hover:shadow-lg transition-all flex items-center gap-2">
+              <button 
+                onClick={fetchAnalytics}
+                className="px-4 py-2 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl hover:shadow-lg transition-all flex items-center gap-2"
+              >
                 <Download className="w-4 h-4" />
-                Export
+                Refresh
               </button>
             </div>
           </div>
@@ -147,7 +146,7 @@ const Analytics = () => {
               Patient Volume Trends
             </h3>
             <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={volumeData}>
+              <AreaChart data={analyticsData.volumeData}>
                 <defs>
                   <linearGradient id="colorEncounters" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.8}/>
@@ -176,16 +175,16 @@ const Analytics = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Alert Severity Distribution */}
+          {/* Encounter Types Distribution */}
           <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-purple-100/50">
             <h3 className="text-lg font-semibold text-purple-900 mb-4 flex items-center gap-2">
               <AlertCircle className="w-5 h-5 text-purple-400" />
-              Alert Severity Distribution
+              Encounter Types Distribution
             </h3>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={alertSeverityData}
+                  data={analyticsData.encounterTypesData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -194,8 +193,8 @@ const Analytics = () => {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {alertSeverityData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  {analyticsData.encounterTypesData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip 
@@ -216,10 +215,10 @@ const Analytics = () => {
           <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-purple-100/50">
             <h3 className="text-lg font-semibold text-purple-900 mb-4 flex items-center gap-2">
               <Activity className="w-5 h-5 text-purple-400" />
-              Top Conditions by Encounter
+              Top Conditions by Patient Count
             </h3>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={conditionsData} layout="horizontal">
+              <BarChart data={analyticsData.conditionsData} layout="horizontal">
                 <CartesianGrid strokeDasharray="3 3" stroke="#e9d5ff" />
                 <XAxis type="number" stroke="#c084fc" />
                 <YAxis dataKey="condition" type="category" width={120} stroke="#c084fc" />
@@ -231,7 +230,7 @@ const Analytics = () => {
                   }}
                 />
                 <Bar dataKey="count" radius={[0, 8, 8, 0]}>
-                  {conditionsData.map((entry, index) => (
+                  {analyticsData.conditionsData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Bar>
@@ -239,16 +238,16 @@ const Analytics = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Department Metrics */}
+          {/* Chief Complaints */}
           <div className="bg-white/70 backdrop-blur-md rounded-3xl p-6 shadow-xl border border-purple-100/50">
             <h3 className="text-lg font-semibold text-purple-900 mb-4 flex items-center gap-2">
               <Users className="w-5 h-5 text-purple-400" />
-              Department Performance
+              Top Chief Complaints
             </h3>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={departmentData}>
+              <BarChart data={analyticsData.complaintsData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e9d5ff" />
-                <XAxis dataKey="dept" stroke="#c084fc" angle={-45} textAnchor="end" height={80} />
+                <XAxis dataKey="complaint" stroke="#c084fc" angle={-45} textAnchor="end" height={120} />
                 <YAxis stroke="#c084fc" />
                 <Tooltip 
                   contentStyle={{ 
@@ -257,9 +256,7 @@ const Analytics = () => {
                     borderRadius: '12px'
                   }}
                 />
-                <Legend />
-                <Bar dataKey="patients" fill="#a78bfa" radius={[8, 8, 0, 0]} name="Patient Count" />
-                <Bar dataKey="avgWait" fill="#ec4899" radius={[8, 8, 0, 0]} name="Avg Wait (min)" />
+                <Bar dataKey="count" fill="#a78bfa" radius={[8, 8, 0, 0]} name="Count" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -268,7 +265,7 @@ const Analytics = () => {
         {/* Conditions Table */}
         <div className="bg-white/70 backdrop-blur-md rounded-3xl shadow-xl border border-purple-100/50 overflow-hidden">
           <div className="p-6 border-b border-purple-100">
-            <h3 className="text-lg font-semibold text-purple-900">Trending Conditions</h3>
+            <h3 className="text-lg font-semibold text-purple-900">Top Conditions</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -276,28 +273,26 @@ const Analytics = () => {
                 <tr>
                   <th className="px-6 py-4 text-left text-sm font-medium text-purple-600">Condition</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-purple-600">Patient Count</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-purple-600">Change (30d)</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-purple-600">Trend</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-purple-600">Percentage</th>
                 </tr>
               </thead>
               <tbody>
-                {conditionsData.map((condition, idx) => (
+                {analyticsData.conditionsData.map((condition, idx) => (
                   <tr key={idx} className="border-t border-purple-50 hover:bg-purple-50/30 transition-all">
                     <td className="px-6 py-4 text-purple-900 font-medium">{condition.condition}</td>
                     <td className="px-6 py-4 text-purple-700">{condition.count}</td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        condition.change > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
-                      }`}>
-                        {condition.change > 0 ? '+' : ''}{condition.change}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {condition.change > 0 ? (
-                        <TrendingUp className="w-5 h-5 text-red-500" />
-                      ) : (
-                        <TrendingDown className="w-5 h-5 text-green-500" />
-                      )}
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-purple-100 rounded-full h-2">
+                          <div 
+                            className="bg-purple-400 h-2 rounded-full" 
+                            style={{ width: `${(condition.count / analyticsData.totalPatients * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-purple-600 min-w-[50px]">
+                          {((condition.count / analyticsData.totalPatients) * 100).toFixed(1)}%
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}
