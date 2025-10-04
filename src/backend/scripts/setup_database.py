@@ -1,16 +1,24 @@
+import os
 import csv
+import ast
 from clickhouse_driver import Client
-import ast # Used to safely evaluate the string representation of a list
-from datetime import datetime # Import the datetime object
+from dotenv import load_dotenv
+from datetime import datetime
+
+# --- Load Environment Variables ---
+# This line looks for a .env file in the current directory and loads its variables
+load_dotenv() 
 
 # --- Database Configuration ---
-CLICKHOUSE_HOST = 'localhost'
-CLICKHOUSE_PORT = 9000
-DATABASE_NAME = 'hackathon'
+# Safely get variables from the environment, with default values as fallbacks
+CLICKHOUSE_HOST = os.getenv('CLICKHOUSE_HOST', 'localhost')
+CLICKHOUSE_PORT = int(os.getenv('CLICKHOUSE_PORT', 9000))
+DATABASE_NAME = os.getenv('CLICKHOUSE_DB')
+CLICKHOUSE_USER = os.getenv('CLICKHOUSE_USER')
+CLICKHOUSE_PASSWORD = os.getenv('CLICKHOUSE_PASSWORD')
+
 TABLE_NAME = 'patients'
 DATA_FILE = 'synthetic_patients.csv'
-CLICKHOUSE_USER = 'hackathon'
-CLICKHOUSE_PASSWORD = 'hackathon'
 
 
 def get_clickhouse_client():
@@ -24,10 +32,10 @@ def get_clickhouse_client():
             database=DATABASE_NAME
         )
         client.execute('SELECT 1')
-        print("Successfully connected to ClickHouse.")
+        print("✅ Successfully connected to ClickHouse.")
         return client
     except Exception as e:
-        print(f"Error connecting to ClickHouse: {e}")
+        print(f"❌ Error connecting to ClickHouse: {e}")
         return None
 
 def create_patients_table(client):
@@ -46,30 +54,30 @@ def create_patients_table(client):
     """
     try:
         client.execute(f"DROP TABLE IF EXISTS {DATABASE_NAME}.{TABLE_NAME}")
-        print(f"Dropped existing table '{TABLE_NAME}' (if any).")
+        print(f"🧹 Dropped existing table '{TABLE_NAME}' (if any).")
         client.execute(create_table_query)
-        print(f"Table '{TABLE_NAME}' created successfully.")
+        print(f"✅ Table '{TABLE_NAME}' created successfully.")
     except Exception as e:
-        print(f"Error creating table: {e}")
+        print(f"❌ Error creating table: {e}")
 
 def load_data_from_csv(client):
     """Loads data from the generated CSV into the ClickHouse table."""
     try:
-        with open(DATA_FILE, 'r') as f:
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
             reader = csv.reader(f)
             next(reader)  # Skip header row
 
             processed_rows = []
             for row in reader:
-                # FINAL FIX IS HERE: Convert date and datetime strings to objects
+                # Convert data types for each column to match the ClickHouse schema
                 processed_row = [
-                    row[0], # patient_id (String)
-                    int(row[1]), # age (Int)
-                    ast.literal_eval(row[2]), # conditions (List)
-                    datetime.strptime(row[3], '%Y-%m-%d').date(), # last_a1c_date (Date object)
-                    datetime.strptime(row[4], '%Y-%m-%d %H:%M:%S'), # encounter_date (DateTime object)
-                    row[5], # chief_complaint (String)
-                    row[6]  # encounter_type (String)
+                    row[0],                             # patient_id (String)
+                    int(row[1]),                        # age (String -> Int32)
+                    ast.literal_eval(row[2]),           # conditions (String -> Array(String))
+                    datetime.strptime(row[3], '%Y-%m-%d').date(), # last_a1c_date (String -> Date)
+                    datetime.strptime(row[4], '%Y-%m-%d %H:%M:%S'), # encounter_date (String -> DateTime)
+                    row[5],                             # chief_complaint (String)
+                    row[6]                              # encounter_type (String)
                 ]
                 processed_rows.append(processed_row)
 
@@ -77,9 +85,9 @@ def load_data_from_csv(client):
                 f'INSERT INTO {DATABASE_NAME}.{TABLE_NAME} VALUES',
                 processed_rows
             )
-        print(f"Data from '{DATA_FILE}' loaded successfully into '{TABLE_NAME}'.")
+            print(f"✅ Data from '{DATA_FILE}' loaded successfully into '{TABLE_NAME}'.")
     except Exception as e:
-        print(f"Error loading data from CSV: {e}")
+        print(f"❌ Error loading data from CSV: {e}")
 
 def main():
     """Main function to set up the database and load data."""
@@ -87,8 +95,11 @@ def main():
     if client:
         create_patients_table(client)
         load_data_from_csv(client)
+        
+        # Verify the number of records loaded
         count = client.execute(f'SELECT count() FROM {DATABASE_NAME}.{TABLE_NAME}')[0][0]
-        print(f"Verification: Found {count} records in the '{TABLE_NAME}' table.")
+        print(f"📊 Verification: Found {count} records in the '{TABLE_NAME}' table.")
+        
         client.disconnect()
 
 
